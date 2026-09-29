@@ -1,0 +1,3 @@
+[submodule "c/lib/mfcc_fixed_point"]
+	path = c/lib/mfcc_fixed_point
+	url = git@github.com:Unicamp-Odhin/mfcc_fixed_point.git
