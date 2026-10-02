@@ -5,17 +5,14 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
-/* Cole aqui a saída do gen_bpf.py */
 static const double BPF_SOS[][6] = {
-    {0.57173198331682984, 1.1434639666336597, 0.57173198331682984, 1, 1.3625219619531816, 0.47604180545601055},
+    {0.57173198331682984, 1.1434639666336597, 0.57173198331682984, 1,
+     1.3625219619531816, 0.47604180545601055},
     {1, 2, 1, 1, 1.6124225251649913, 0.74552454077471841},
     {1, -2, 1, 1, -1.9423852416050995, 0.9433544885950067},
     {1, -2, 1, 1, -1.975371880085838, 0.97634885779931668},
@@ -23,84 +20,77 @@ static const double BPF_SOS[][6] = {
 
 #define BPF_N_SECTIONS ((int)(sizeof(BPF_SOS) / sizeof(BPF_SOS[0])))
 
-/* scipy default: 3 * (2*len(sos) + 1 - min(...)) */
 #define BPF_PADLEN (3 * (2 * BPF_N_SECTIONS + 1))
 #define CONFIG_FILE "config.txt"
 
-/* Direct Form II transposed, uma seção SOS em cascata */
 static void sosfilt_forward(const double *x, int n, double *y) {
-    memcpy(y, x, (size_t)n * sizeof(double));
-    for (int s = 0; s < BPF_N_SECTIONS; s++) {
-        const double b0 = BPF_SOS[s][0], b1 = BPF_SOS[s][1], b2 = BPF_SOS[s][2];
-        const double a1 = BPF_SOS[s][4], a2 = BPF_SOS[s][5];
-        double z1 = 0.0, z2 = 0.0;
-        for (int i = 0; i < n; i++) {
-            double in  = y[i];
-            double out = b0 * in + z1;
-            z1 = b1 * in - a1 * out + z2;
-            z2 = b2 * in - a2 * out;
-            y[i] = out;
-        }
+  memcpy(y, x, (size_t)n * sizeof(double));
+  for (int s = 0; s < BPF_N_SECTIONS; s++) {
+    const double b0 = BPF_SOS[s][0], b1 = BPF_SOS[s][1], b2 = BPF_SOS[s][2];
+    const double a1 = BPF_SOS[s][4], a2 = BPF_SOS[s][5];
+    double z1 = 0.0, z2 = 0.0;
+    for (int i = 0; i < n; i++) {
+      double in = y[i];
+      double out = b0 * in + z1;
+      z1 = b1 * in - a1 * out + z2;
+      z2 = b2 * in - a2 * out;
+      y[i] = out;
     }
+  }
 }
 
-/*
- * Bandpass zero-phase (equivalente a scipy.signal.sosfiltfilt).
- * Entrada int16 → saída int16 (quantizada depois de filtrar em double).
- */
 static int bandpass_int16(const int16_t *in, int n, int16_t *out) {
-    if (n <= BPF_PADLEN + 1) {
-        /* Sinal curto: scipy recusaria; devolve sem filtrar */
-        memcpy(out, in, (size_t)n * sizeof(int16_t));
-        return 0;
-    }
+  if (n <= BPF_PADLEN + 1) {
+    memcpy(out, in, (size_t)n * sizeof(int16_t));
+    return 0;
+  }
 
-    const int pad = BPF_PADLEN;
-    const int total = n + 2 * pad;
+  const int pad = BPF_PADLEN;
+  const int total = n + 2 * pad;
 
-    double *ext = malloc((size_t)total * sizeof(double));
-    double *tmp = malloc((size_t)total * sizeof(double));
-    if (!ext || !tmp) { free(ext); free(tmp); return -1; }
-
-    /* Extensão ímpar (padtype='odd') — igual ao scipy */
-    for (int i = 0; i < pad; i++)
-        ext[pad - 1 - i] = 2.0 * in[0] - in[1 + i];
-    for (int i = 0; i < n; i++)
-        ext[pad + i] = (double)in[i];
-    for (int i = 0; i < pad; i++)
-        ext[pad + n + i] = 2.0 * in[n - 1] - in[n - 2 - i];
-
-    /* Forward */
-    sosfilt_forward(ext, total, tmp);
-
-    /* Reverse */
-    for (int i = 0; i < total / 2; i++) {
-        double t = tmp[i];
-        tmp[i] = tmp[total - 1 - i];
-        tmp[total - 1 - i] = t;
-    }
-
-    /* Forward novamente */
-    sosfilt_forward(tmp, total, ext);
-
-    /* Reverse de volta */
-    for (int i = 0; i < total / 2; i++) {
-        double t = ext[i];
-        ext[i] = ext[total - 1 - i];
-        ext[total - 1 - i] = t;
-    }
-
-    /* Remove padding e quantiza para int16 */
-    for (int i = 0; i < n; i++) {
-        double v = ext[pad + i];
-        if (v >  32767.0) v =  32767.0;
-        if (v < -32768.0) v = -32768.0;
-        out[i] = (int16_t)lround(v);
-    }
-
+  double *ext = malloc((size_t)total * sizeof(double));
+  double *tmp = malloc((size_t)total * sizeof(double));
+  if (!ext || !tmp) {
     free(ext);
     free(tmp);
-    return 0;
+    return -1;
+  }
+
+  for (int i = 0; i < pad; i++)
+    ext[pad - 1 - i] = 2.0 * in[0] - in[1 + i];
+  for (int i = 0; i < n; i++)
+    ext[pad + i] = (double)in[i];
+  for (int i = 0; i < pad; i++)
+    ext[pad + n + i] = 2.0 * in[n - 1] - in[n - 2 - i];
+
+  sosfilt_forward(ext, total, tmp);
+
+  for (int i = 0; i < total / 2; i++) {
+    double t = tmp[i];
+    tmp[i] = tmp[total - 1 - i];
+    tmp[total - 1 - i] = t;
+  }
+
+  sosfilt_forward(tmp, total, ext);
+
+  for (int i = 0; i < total / 2; i++) {
+    double t = ext[i];
+    ext[i] = ext[total - 1 - i];
+    ext[total - 1 - i] = t;
+  }
+
+  for (int i = 0; i < n; i++) {
+    double v = ext[pad + i];
+    if (v > 32767.0)
+      v = 32767.0;
+    if (v < -32768.0)
+      v = -32768.0;
+    out[i] = (int16_t)lround(v);
+  }
+
+  free(ext);
+  free(tmp);
+  return 0;
 }
 
 static void trim_line(char *line) {
@@ -180,45 +170,52 @@ int load_config(const char *dir, mfcc_config_t *cfg) {
 }
 
 static void apply_cmvn(mfcc_result_t *r, int F) {
-    int T = r->num_frames;
-    int D = r->num_ceps;
-    if (T <= 0 || D <= 0) return;
+  int T = r->num_frames;
+  int D = r->num_ceps;
+  if (T <= 0 || D <= 0)
+    return;
 
-    const double scale = (double)(1LL << F);
+  const double scale = (double)(1LL << F);
 
-    double *mean = calloc((size_t)D, sizeof(double));
-    double *var  = calloc((size_t)D, sizeof(double));
-    if (!mean || !var) { free(mean); free(var); return; }
-
-    for (int t = 0; t < T; t++)
-        for (int j = 0; j < D; j++)
-            mean[j] += (double)r->coefficients[t][j] / scale;
-
-    for (int j = 0; j < D; j++)
-        mean[j] /= (double)T;
-
-    for (int t = 0; t < T; t++)
-        for (int j = 0; j < D; j++) {
-            double d = (double)r->coefficients[t][j] / scale - mean[j];
-            var[j] += d * d;
-        }
-
-    for (int j = 0; j < D; j++)
-        var[j] = sqrt(var[j] / (double)T);
-
-    for (int t = 0; t < T; t++)
-        for (int j = 0; j < D; j++) {
-            double x = (double)r->coefficients[t][j] / scale;
-            double y = (x - mean[j]) / (var[j] + 1e-8);
-
-            int64_t q = (int64_t)llround(y * scale);
-            if (q > INT32_MAX) q = INT32_MAX;
-            if (q < INT32_MIN) q = INT32_MIN;
-            r->coefficients[t][j] = (int32_t)q;
-        }
-
+  double *mean = calloc((size_t)D, sizeof(double));
+  double *var = calloc((size_t)D, sizeof(double));
+  if (!mean || !var) {
     free(mean);
     free(var);
+    return;
+  }
+
+  for (int t = 0; t < T; t++)
+    for (int j = 0; j < D; j++)
+      mean[j] += (double)r->coefficients[t][j] / scale;
+
+  for (int j = 0; j < D; j++)
+    mean[j] /= (double)T;
+
+  for (int t = 0; t < T; t++)
+    for (int j = 0; j < D; j++) {
+      double d = (double)r->coefficients[t][j] / scale - mean[j];
+      var[j] += d * d;
+    }
+
+  for (int j = 0; j < D; j++)
+    var[j] = sqrt(var[j] / (double)T);
+
+  for (int t = 0; t < T; t++)
+    for (int j = 0; j < D; j++) {
+      double x = (double)r->coefficients[t][j] / scale;
+      double y = (x - mean[j]) / (var[j] + 1e-8);
+
+      int64_t q = (int64_t)llround(y * scale);
+      if (q > INT32_MAX)
+        q = INT32_MAX;
+      if (q < INT32_MIN)
+        q = INT32_MIN;
+      r->coefficients[t][j] = (int32_t)q;
+    }
+
+  free(mean);
+  free(var);
 }
 
 typedef struct {
@@ -228,34 +225,35 @@ typedef struct {
   int has_silence;
 } score_triple_t;
 
-static score_triple_t score_audio_triple(void *bundle_ptr,
-                                         const char *filename, mfcc_config_t cfg) {
+static score_triple_t score_audio_triple(void *bundle_ptr, const char *filename,
+                                         mfcc_config_t cfg) {
   score_triple_t out = {NAN, NAN, NAN, 0};
   HMMBundle_fp *bundle = (HMMBundle_fp *)bundle_ptr;
 
   int16_t *samples = NULL;
-  WavHeader *header = open_wav_file((char *)filename, &samples);
-  if (!header)
-    return out;  
+  uint32_t data_bytes = 0;
+  WavHeader *header = open_wav_file(filename, &samples, &data_bytes);
+  if (!header) {
+    free(samples);
+    return out;
+  }
 
   int sample_rate = header->sampleRate;
-  int num_samples = header->subchunk2Size / sizeof(int16_t);   int16_t *samples_bp = malloc((size_t)num_samples * sizeof(int16_t));
-  
+  int num_samples = (int)(data_bytes / sizeof(int16_t));
+  int16_t *samples_bp = malloc((size_t)num_samples * sizeof(int16_t));
+
   if (!samples_bp) {
-      free(samples); free(header);
-      return out;
+    free(samples);
+    free(header);
+    return out;
   }
   if (bandpass_int16(samples, num_samples, samples_bp) != 0) {
-      fprintf(stderr, "Bandpass filter failed: %s\n", filename);
-      free(samples_bp); free(samples); free(header);
-      return out;
+    fprintf(stderr, "Bandpass filter failed: %s\n", filename);
+    free(samples_bp);
+    free(samples);
+    free(header);
+    return out;
   }
-
-  // printf("%s:\n  raw : ", filename);
-  // for (int j = 0; j < 10; j++) printf("%d ", samples[j]);
-  // printf("\n  bp  : ");
-  // for (int j = 0; j < 10; j++) printf("%d ", samples_bp[j]);
-  // printf("\n");
 
   mfcc_result_t result = {0};
   if (mfcc_compute(samples, num_samples, sample_rate, &cfg, &result) != 0) {
@@ -265,18 +263,7 @@ static score_triple_t score_audio_triple(void *bundle_ptr,
   }
   // TODO: colocar os deltas
 
-
-  // printf("ANTES do CMVN:\n");
-  // for (int j = 0; j < result.num_ceps; j++)
-  //     printf("%.4f ", (float)result.coefficients[0][j] / (float)(1 << cfg.F_DCT));
-  // printf("\n");
-
   apply_cmvn(&result, cfg.F_DCT);
-
-  // printf("DEPOIS do CMVN:\n");
-  // for (int j = 0; j < result.num_ceps; j++)
-  //     printf("%.4f ", (float)result.coefficients[0][j] / (float)(1 << cfg.F_DCT));
-  // printf("\n\n");
 
   double T = (double)result.num_frames;
 
@@ -485,8 +472,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "falha carregando %s\n", path);
     return 1;
   }
-
-  hmm_bundle_dump_fp(&b_fp);
 
   const char *data_dir = getenv("DATA_DIR");
   if (!data_dir) {

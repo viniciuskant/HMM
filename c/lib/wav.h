@@ -21,13 +21,9 @@ typedef struct {
   uint32_t byteRate;
   uint16_t blockAlign;
   uint16_t bitsPerSample;
-
-  // Subchunk2 (data)
-  char subchunk2ID[4]; // "data"
-  uint32_t subchunk2Size;
 } WavHeader;
 
-WavHeader *open_wav_file(const char *filename, int16_t **samples);
+WavHeader *open_wav_file(const char *filename, int16_t  **samples, uint32_t *out_data_size);
 
 #ifdef __cplusplus
 }

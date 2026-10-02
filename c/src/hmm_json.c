@@ -1,8 +1,8 @@
 #include "hmm_json.h"
 #include "cJSON.h"
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static char *read_whole_file(const char *path, size_t *out_len) {
