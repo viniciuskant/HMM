@@ -2,12 +2,15 @@ CC = ccache gcc
 
 # Flags padrão
 CFLAGS = -O3 -march=native
+CPPFLAGS = -Ilib/mfcc_fixed_point/include -Ilib/mfcc_fixed_point/src -Ilib
 LDFLAGS = -lm
 INCLUDES = -Ilib
 
 # Diretórios
 BUILD_DIR = build
 SRC_DIR = src
+MFCC_DIR = lib/mfcc_fixed_point
+
 
 # Cores
 BLUE := \033[1;34m
@@ -34,21 +37,32 @@ $(info [INFO] CFLAGS: $(CFLAGS))
 C_SOURCES = $(wildcard $(SRC_DIR)/*.c)
 C_OBJECTS = $(C_SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
+# Biblioteca MFCC
+MFCC_LIB = $(MFCC_DIR)/build/libmfcc.a
+
 # Alvo principal
 all: buildFolder $(BUILD_DIR)/main.elf
 
 .PHONY: all clean buildFolder
 
+mfcc: $(MFCC_LIB)
+
+# Construir biblioteca MFCC
+$(MFCC_LIB):
+	@printf "$(GREEN)[MFCC]$(NC) Compilando biblioteca MFCC\n"
+	$(MAKE) -C $(MFCC_DIR)
+
+
 # Linkagem
-$(BUILD_DIR)/main.elf: $(C_OBJECTS)
+$(BUILD_DIR)/main.elf: $(C_OBJECTS) $(MFCC_LIB)
 	@printf "$(GREEN)[LINK]$(NC) Vinculando objetos para criar o executável\n"
-	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(C_OBJECTS)  -L$(MFCC_DIR)/build  -lmfcc  $(LDFLAGS) $(LDLIBS)  -o $@
+
 
 # Compilação
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@printf "$(BLUE)[CC]$(NC) Compilando $<\n"
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 # Criar diretório
 buildFolder:
 	@mkdir -p $(BUILD_DIR)

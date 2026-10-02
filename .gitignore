@@ -29,7 +29,6 @@ data/
 
 # Compilação C
 c/build/
-c/lib/
 
 # Arquivos de IDE/editor
 .vscode/
@@ -47,3 +46,9 @@ Thumbs.db
 # Variáveis de ambiente
 .env
 .env.*
+
+# Imagens
+*.png
+*.pdf
+*.jpg
+*.jpeg

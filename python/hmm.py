@@ -85,7 +85,11 @@ class DiagonalGMMHMM:
         var = np.maximum(var, 1e-6)
         D = X.shape[1]
         diff = X - mu
+        # print("diff:", diff)
+        # print("X:", X)
+        # print("mu:", mu)
         maha = np.sum((diff * diff) / var, axis=1)
+        # print("maha:", maha)
         log_det = np.sum(np.log(var))
         return -0.5 * (D * np.log(2 * np.pi) + log_det + maha)
 
@@ -97,8 +101,8 @@ class DiagonalGMMHMM:
         for i in range(n):
             lg = np.empty((T, m))
             for k in range(m):
-                lg[:, k] = self._log_gaussian(X, self.means_[i, k],
-                                              self.covars_[i, k])
+                lg[:, k] = self._log_gaussian(X, self.means_[i, k], self.covars_[i, k])
+                # print("lg", lg)
             log_B[:, i] = logsumexp(log_w[i][None, :] + lg, axis=1)
         return log_B
 
@@ -235,21 +239,21 @@ class DiagonalGMMHMM:
                 print(f"    it={it+1} loglik={total_ll:.2f} delta={delta:.4f}")
         return self
 
-    # def score(self, X):
-    #     """log P(X | modelo)."""
-    #     log_B = self._log_emission(X)
-    #     _, log_P = self._forward(log_B)
-    #     return float(log_P)
 
     def score(self, X):
-        """
-        Viterbi otimizado para topologia left-to-right.
-        Só 2 transições válidas por estado -> substitui logsumexp por max de 2.
-        """
+        # Viterbi otimizado para topologia left-to-right.
+        # Só 2 transições válidas por estado -> substitui logsumexp por max de 2.
+        
         T = X.shape[0]
         n = self.n_components
+        # print(f"X: {X[0]}")
         log_B = self._log_emission(X)
-
+        # print("log_B: ")
+        # for linha in log_B:
+        #     for x in linha:
+        #         print(f"{x:.2f}", end=" ")
+        #     print()
+        # exit()
         # Só precisamos de A[i,i] e A[i,i+1]
         log_self = np.log(np.diag(self.transmat_) + 1e-300)        # (n,)
         log_next = np.log(np.diag(self.transmat_, k=1) + 1e-300)   # (n-1,)
@@ -267,7 +271,7 @@ class DiagonalGMMHMM:
                 advan = v[j - 1] + log_next[j - 1]
                 v_new[j] = (stay if stay > advan else advan) + log_B[t, j]
             v = v_new
-
+        print(f"{float(np.max(v))}")
         return float(np.max(v))
 
     def decode(self, X):

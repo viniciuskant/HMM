@@ -11,6 +11,7 @@ def load_bundle():
 
 def score_audio(bundle, path: str) -> dict:
     X = extract_mfcc(path)
+    # print(f"DEPOIS do CMVN, frame 0:\n\t{X[0]}")
     T = X.shape[0]
     scores = {
         "word": bundle["word"].score(X) / T,

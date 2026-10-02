@@ -1,0 +1,8 @@
+-I./lib
+-I./lib/mfcc_fixed_point/include
+-I./lib/mfcc_fixed_point/src
+-I./src
+-I/usr/local/include
+-std=c17
+-Wall
+-Wextra
